@@ -4,12 +4,12 @@
     return;
   }
 
-  // Itt jön az extension kódod
+  // Itt jön a SoundCloud extension kódja
   (async function() {
     let audio = null;
 
     gandi.extension("soundcloudPlayer", async (ctx) => {
-      // Load Track
+      // Track betöltése
       ctx.registerBlock("Load Track", {
         inputs: { url: "string", clientId: "string", listName: "string" },
         outputs: { title: "string", artist: "string", artwork: "string", duration: "number" },
@@ -17,6 +17,7 @@
           const res = await fetch(`https://api.soundcloud.com/resolve?url=${encodeURIComponent(url)}&client_id=${clientId}`);
           const track = await res.json();
 
+          // Leállítjuk az előző track-et, ha van
           if (audio) audio.pause();
           audio = new Audio(`${track.stream_url}?client_id=${clientId}`);
           audio.autoplay = true;
@@ -31,14 +32,16 @@
             `Duration: ${Math.floor(track.duration / 1000)} sec`
           ];
 
+          // Track vége esemény
           audio.onended = () => console.log("Track finished!");
+
           return { title: track.title, artist: track.user.username, artwork: track.artwork_url, duration: track.duration };
         }
       });
 
-      // Play / Pause
+      // Lejátszás / Szünet
       ctx.registerBlock("Control Playback", {
-        inputs: { action: "string" },
+        inputs: { action: "string" }, // "play" vagy "pause"
         outputs: {},
         execute({ action }) {
           if (!audio) return;
@@ -47,9 +50,9 @@
         }
       });
 
-      // Volume
+      // Hangerő állítás
       ctx.registerBlock("Set Volume", {
-        inputs: { volume: "number" },
+        inputs: { volume: "number" }, // 0.0 - 1.0 között
         outputs: {},
         execute({ volume }) {
           if (audio) audio.volume = Math.max(0, Math.min(1, volume));
