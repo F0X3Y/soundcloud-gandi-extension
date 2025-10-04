@@ -1,75 +1,62 @@
-(async function () {
-  const gandi = window.gandi;
+(function waitForGandi() {
+  if (typeof gandi === "undefined") {
+    setTimeout(waitForGandi, 100); // 100 ms-onta újrapróbálkozunk
+    return;
+  }
 
-  // belső player objektum
-  let audio = null;
+  // Itt jön az extension kódod
+  (async function() {
+    let audio = null;
 
-  gandi.extension("soundcloudPlayer", async (ctx) => {
-    // Load from soundcloud
-    ctx.registerBlock("Load SoundCloud Track", {
-      inputs: { url: "string", clientId: "string", listName: "string" },
-      outputs: { title: "string", artist: "string", artwork: "string", duration: "number" },
-      async execute({ url, clientId, listName }) {
-        // get data
-        const res = await fetch(
-          `https://api.soundcloud.com/resolve?url=${encodeURIComponent(url)}&client_id=${clientId}`
-        );
-        const track = await res.json();
+    gandi.extension("soundcloudPlayer", async (ctx) => {
+      // Load Track
+      ctx.registerBlock("Load Track", {
+        inputs: { url: "string", clientId: "string", listName: "string" },
+        outputs: { title: "string", artist: "string", artwork: "string", duration: "number" },
+        async execute({ url, clientId, listName }) {
+          const res = await fetch(`https://api.soundcloud.com/resolve?url=${encodeURIComponent(url)}&client_id=${clientId}`);
+          const track = await res.json();
 
-        // stop already playing audio(if there is any)
-        if (audio) {
-          audio.pause();
-          audio = null;
+          if (audio) audio.pause();
+          audio = new Audio(`${track.stream_url}?client_id=${clientId}`);
+          audio.autoplay = true;
+
+          // Scratch lista kezelése
+          gandi.vm.runtime.deleteVariable(listName);
+          gandi.vm.runtime.createVariable(listName, "list");
+          gandi.vm.runtime.getVariable(listName).value = [
+            `Title: ${track.title}`,
+            `Artist: ${track.user.username}`,
+            `Artwork: ${track.artwork_url}`,
+            `Duration: ${Math.floor(track.duration / 1000)} sec`
+          ];
+
+          audio.onended = () => console.log("Track finished!");
+          return { title: track.title, artist: track.user.username, artwork: track.artwork_url, duration: track.duration };
         }
+      });
 
-        // Create new audio
-        audio = new Audio(`${track.stream_url}?client_id=${clientId}`);
-        audio.autoplay = true;
+      // Play / Pause
+      ctx.registerBlock("Control Playback", {
+        inputs: { action: "string" },
+        outputs: {},
+        execute({ action }) {
+          if (!audio) return;
+          if (action === "play") audio.play();
+          if (action === "pause") audio.pause();
+        }
+      });
 
-        // Del scratch list
-        gandi.vm.runtime.deleteVariable(listName);
+      // Volume
+      ctx.registerBlock("Set Volume", {
+        inputs: { volume: "number" },
+        outputs: {},
+        execute({ volume }) {
+          if (audio) audio.volume = Math.max(0, Math.min(1, volume));
+        }
+      });
 
-        // Add stuff to scratch list
-        gandi.vm.runtime.createVariable(listName, "list");
-        gandi.vm.runtime.getVariable(listName).value = [
-          `Title: ${track.title}`,
-          `Artist: ${track.user.username}`,
-          `Artwork: ${track.artwork_url}`,
-          `Duration: ${Math.floor(track.duration / 1000)} sec`
-        ];
-
-        // ha vége, akkor írjunk logot (később triggerelhet eventet is)
-        audio.onended = () => {
-          console.log("Track finished!");
-        };
-
-        return {
-          title: track.title,
-          artist: track.user.username,
-          artwork: track.artwork_url,
-          duration: track.duration
-        };
-      }
     });
+  })();
 
-    // Play / Pause
-    ctx.registerBlock("Control Playback", {
-      inputs: { action: "string" }, // "play" vagy "pause"
-      outputs: {},
-      execute({ action }) {
-        if (!audio) return;
-        if (action === "play") audio.play();
-        if (action === "pause") audio.pause();
-      }
-    });
-
-    // Volume
-    ctx.registerBlock("Set Volume", {
-      inputs: { volume: "number" }, // 0.0 - 1.0 között
-      outputs: {},
-      execute({ volume }) {
-        if (audio) audio.volume = Math.max(0, Math.min(1, volume));
-      }
-    });
-  });
 })();
