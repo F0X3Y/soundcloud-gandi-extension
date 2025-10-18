@@ -1,6 +1,6 @@
 class SoundCloudExtension {
     constructor() {
-        this.clientId = 'YOUR_SOUNDCLOUD_CLIENT_ID'; // Ide a SoundCloud client ID
+        this.clientId = 'MHDG7vIKasWstY0FaB07rK5WUoUjjCDC'; // Ide a SoundCloud client ID
         this.tracks = []; // Itt tároljuk a keresési eredményeket (JSON)
         this.audio = null; // Aktuális lejátszó
         this.currentTrackIndex = -1; // Aktuális track index
