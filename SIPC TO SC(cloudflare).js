@@ -1,162 +1,58 @@
+// soundcloud-extension.js
 class MusicExtension {
   constructor(runtime) {
     this.runtime = runtime;
-    this.clientId = "OwVhF7OBKF7qqXotasf91epNAnsn23pe";  
-    this.proxyBase = 'https://gandiideext.ambrust-zoltan01.workers.dev';  // ide a proxy-d
-
+    this.clientId = (typeof window !== 'undefined' && window.SOUNDCLOUD_CLIENT_ID) ? window.SOUNDCLOUD_CLIENT_ID : 'OwVhF7OBKF7qqXotasf91epNAnsn23pe';
     this.audioElement = null;
-    Scratch.translate.setup({
-      // ... (a többi marad ugyanaz)
-    });
   }
 
   getInfo() {
     return {
       id: 'sipc.ink.CloudMusic',
       name: 'CloudMusic (SoundCloud)',
-      color1: "#4d4df",
+      color1: "#4d4d4f",
       blocks: [
-        //... blokkok ugyanazok
+        { opcode: 'SearchMusic', blockType: Scratch.BlockType.REPORTER, text: "Search Music [name]", arguments: { name: { type: Scratch.ArgumentType.STRING, defaultValue: "Let's live" } } },
+        { opcode: 'Getmusic', blockType: Scratch.BlockType.REPORTER, text: "Get music url [id]", arguments: { id: { type: Scratch.ArgumentType.STRING, defaultValue: 'https://soundcloud.com/artist/track' } } },
+        { opcode: 'playMusic', blockType: Scratch.BlockType.COMMAND, text: "Play music from [url]", arguments: { url: { type: Scratch.ArgumentType.STRING, defaultValue: 'https://example.com/music.mp3' } } },
+        { opcode: 'pauseMusic', blockType: Scratch.BlockType.COMMAND, text: "Pause Music" },
+        { opcode: 'resumeMusic', blockType: Scratch.BlockType.COMMAND, text: "Play Music" },
+        { opcode: 'stopMusic', blockType: Scratch.BlockType.COMMAND, text: "Stop Music" }
       ]
     };
   }
 
-  // ===== SearchMusic proxyval =====
+  _getClientId() {
+    return this.clientId;
+  }
+
   async SearchMusic(args) {
     const q = encodeURIComponent(args.name || '');
-    const url = `${this.proxyBase}/search?q=${q}&limit=20`;
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Proxy search failed, status ${res.status}`);
-      const data = await res.json();
-      const songs = data.collection || data;  // az SC válaszában
-      const songInfo = songs.map(s => ({
-        id: s.id,
-        name: s.title || s.name,
-        artists: (s.user && s.user.username) || ''
-      }));
-      return JSON.stringify(songInfo);
-    } catch (e) {
-      return Promise.reject(e);
-    }
+    const clientId = this._getClientId();
+    const url = `https://gandiideext.ambrust-zoltan01.workers.dev/search?q=${q}&client_id=${clientId}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    return JSON.stringify(data.collection || []);
   }
 
-  // ===== Getmusic proxyval =====
   async Getmusic(args) {
-    try {
-      const idOrUrl = (args.id || '').toString();
-      if (!idOrUrl) throw new Error('Missing id');
-
-      let trackObj;
-      if (idOrUrl.startsWith('http')) {
-        const r = await fetch(`${this.proxyBase}/resolve?url=${encodeURIComponent(idOrUrl)}`);
-        if (!r.ok) throw new Error(`Resolve proxy failed: ${r.status}`);
-        trackObj = await r.json();
-      } else {
-        const r = await fetch(`${this.proxyBase}/track?id=${encodeURIComponent(idOrUrl)}`);
-        if (!r.ok) throw new Error(`Track fetch proxy failed: ${r.status}`);
-        trackObj = await r.json();
-      }
-
-      const transcodings = (trackObj.media && trackObj.media.transcodings) || [];
-      let chosen = null;
-      for (let t of transcodings) {
-        if (t.format && t.format.protocol && t.format.protocol.includes('progressive')) {
-          chosen = t;
-          break;
-        }
-      }
-      if (!chosen && transcodings.length > 0) chosen = transcodings[0];
-
-      if (chosen && chosen.url) {
-        const r2 = await fetch(`${this.proxyBase}/transcode?url=${encodeURIComponent(chosen.url)}`);
-        if (!r2.ok) throw new Error(`Transcode proxy failed: ${r2.status}`);
-        const obj = await r2.json();
-        if (obj && obj.url) return obj.url.replace(/^http:/, 'https:');
-      }
-
-      // fallbackok
-      if (trackObj.preview_mp3_128_url) return trackObj.preview_mp3_128_url.replace(/^http:/, 'https:');
-      if (trackObj.stream_url) return `${trackObj.stream_url}?client_id=${this.clientId}`;
-
-      throw new Error('No playable URL found');
-    } catch (e) {
-      return Promise.reject(e);
-    }
+    const idOrUrl = args.id || '';
+    const clientId = this._getClientId();
+    const url = `https://gandiideext.ambrust-zoltan01.workers.dev/resolve?url=${encodeURIComponent(idOrUrl)}&client_id=${clientId}`;
+    const res = await fetch(url);
+    const track = await res.json();
+    return track.stream_url ? `${track.stream_url}?client_id=${clientId}` : '';
   }
 
-  // ===== getCover proxyval =====
-  async getCover(args) {
-    try {
-      const idOrUrl = (args.id || '').toString();
-      let obj;
-      if (idOrUrl.startsWith('http')) {
-        const r = await fetch(`${this.proxyBase}/resolve?url=${encodeURIComponent(idOrUrl)}`);
-        if (!r.ok) throw new Error(`Resolve proxy failed: ${r.status}`);
-        obj = await r.json();
-      } else {
-        const r = await fetch(`${this.proxyBase}/track?id=${encodeURIComponent(idOrUrl)}`);
-        if (!r.ok) throw new Error(`Track fetch proxy failed: ${r.status}`);
-        obj = await r.json();
-      }
-      return obj.artwork_url || (obj.publisher_metadata && obj.publisher_metadata.artwork_url) || '';
-    } catch (e) {
-      return Promise.reject(e);
-    }
+  playMusic(args) {
+    if (!this.audioElement) this.audioElement = new Audio();
+    this.audioElement.src = args.url;
+    this.audioElement.play();
   }
 
-  // ===== A vezérlő- és lejátszó függvények maradnak ugyanazok: pause, resume, stop, jump, volume =====
-
-  pauseMusic() {
-    if (this.audioElement) this.audioElement.pause();
-  }
-  resumeMusic() {
-    if (this.audioElement) this.audioElement.play().catch(()=>{});
-  }
-  stopMusic() {
-    if (this.audioElement) {
-      this.audioElement.pause();
-      this.audioElement.src = '';
-      this.audioElement.load();
-    }
-    this.audioElement = null;
-  }
-  jumpTotime(args) {
-    const time = Number(args.time) || 0;
-    if (this.audioElement) this.audioElement.currentTime = time;
-  }
-  adjustthevolume(args) {
-    if (!this.audioElement) return;
-    const volumePercent = Number(args.volume) || 0;
-    if (volumePercent < 0 || volumePercent > 100) return;
-    this.audioElement.volume = volumePercent / 100;
-  }
-
-  Ismusicplaying() {
-    if (!this.audioElement) return false;
-    if (!this.audioElement.paused && !this.audioElement.ended) return true;
-    if (this.audioElement.paused) return "pause";
-    return false;
-  }
-  Getplaytime() { return this.audioElement ? this.audioElement.currentTime : 0; }
-  Getthetotaldurationofmusic() { return this.audioElement ? this.audioElement.duration || 0 : 0; }
-
-  // ===== A lyrics részeket üresen hagytam, mert SoundCloud nem ad LRC-t nyilvánosan =====
-  async Getlyrics(args) {
-    return '';
-  }
-  async Gettranslatedlyrics(args) {
-    return '';
-  }
-
-  Getcurrenttimelyrics(args) {
-    return '';
-  }
-  Getthelineoflyricsatthecurrenttime(args) {
-    return 0;
-  }
-  Getthelyricstimeofthefirstfewlines(args) {
-    return 0;
-  }
+  pauseMusic() { if (this.audioElement) this.audioElement.pause(); }
+  resumeMusic() { if (this.audioElement) this.audioElement.play(); }
+  stopMusic() { if (this.audioElement) { this.audioElement.pause(); this.audioElement.src = ''; this.audioElement = null; } }
 }
+
 Scratch.extensions.register(new MusicExtension());
